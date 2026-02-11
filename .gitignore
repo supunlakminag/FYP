@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Logs and local state
+*.log
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Generated project outputs
+data/raw/
+results/
+model/saved_models/
+
+# Model/data artifacts
+*.h5
+*.keras
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.sqlite
+*.sqlite3
