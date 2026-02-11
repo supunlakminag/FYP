@@ -7,6 +7,24 @@ from datetime import datetime, timedelta
 from preprocessing.data_loader import DataLoader
 from rolling_window.roll_train import RollingWindowTrainer
 
+
+def _fallback_latest_prediction(df):
+    """
+    Returns a safe fallback prediction row when model output is unavailable.
+    """
+    if df is None or df.empty or "close" not in df.columns:
+        current_price = 0.0
+    else:
+        current_price = float(df["close"].iloc[-1])
+
+    return pd.Series(
+        {
+            "Date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "Actual_Close": current_price,
+            "Predicted_Close": current_price,
+        }
+    )
+
 def get_market_data(ticker):
     """
     Backend function to fetch raw data.
@@ -20,18 +38,36 @@ def run_ai_training(df, window_hours):
     Orchestrates the AI Training.
     Returns the latest prediction row.
     """
-    # Slice 180 days (or relevant window)
-    needed_data = window_hours + 12 
+    # Slice relevant range for training
+    needed_data = window_hours + 12
     df_subset = df.iloc[-needed_data:].copy()
-    
+
+    # Guardrails for short/unavailable data
+    if df_subset.empty or "close" not in df_subset.columns:
+        return _fallback_latest_prediction(df)
+
+    # Ensure window size is valid for current data volume
+    # (rolling trainer needs enough rows to produce at least one prediction).
+    adaptive_window = min(window_hours, max(72, len(df_subset) - 24))
+    if len(df_subset) <= adaptive_window:
+        return _fallback_latest_prediction(df_subset)
+
     # Run Trainer
-    trainer = RollingWindowTrainer(df_subset, window_size=window_hours, debug_mode=False)
+    trainer = RollingWindowTrainer(df_subset, window_size=adaptive_window, debug_mode=False)
     trainer.run()
-    
+
     # Read the results it just saved
+    if not os.path.exists("results/predictions.csv"):
+        return _fallback_latest_prediction(df_subset)
+
     results_df = pd.read_csv("results/predictions.csv")
+    if results_df.empty:
+        return _fallback_latest_prediction(df_subset)
+
     latest_prediction = results_df.iloc[-1]
-    
+    if "Actual_Close" not in latest_prediction or "Predicted_Close" not in latest_prediction:
+        return _fallback_latest_prediction(df_subset)
+
     return latest_prediction
 
 # Updated to accept 'ticker' argument
