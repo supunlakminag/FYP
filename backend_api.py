@@ -33,6 +33,14 @@ def get_market_data(ticker):
     loader = DataLoader(ticker)
     return loader.get_raw_data()
 
+
+def get_live_price(ticker, fallback=None):
+    """
+    Fetches current market price for the selected ticker.
+    """
+    loader = DataLoader(ticker)
+    return loader.get_live_price(fallback=fallback)
+
 def run_ai_training(df, window_hours):
     """
     Orchestrates the AI Training.

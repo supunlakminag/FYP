@@ -153,8 +153,11 @@ if generate_btn:
         progress_bar.progress(60)
         
         status_text.text("🧠 Running LSTM Neural Network...")
+        current_price_live = backend.get_live_price(
+            ticker, fallback=float(latest['Actual_Close'])
+        )
         signal = get_signal(
-            current_price=latest['Actual_Close'], 
+            current_price=current_price_live,
             predicted_price=latest['Predicted_Close'], 
             df_history=df, 
             leverage=leverage

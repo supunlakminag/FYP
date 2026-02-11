@@ -6,9 +6,13 @@ import os
 import time
 
 class DataLoader:
-    def __init__(self, ticker="BTC/USDT", data_path="data/bitcoin_hourly.csv"):
+    def __init__(self, ticker="BTC/USDT", data_path=None):
+        self.ticker = ticker
         self.ticker_binance = ticker.replace("-", "/")  # BTC/USDT
-        self.ticker_yahoo = ticker.replace("/", "-")    # BTC-USD
+        base, quote = self.ticker_binance.split("/")
+        # Yahoo mostly uses USD pairs. USDT is mapped to USD for compatibility.
+        quote_for_yahoo = "USD" if quote.upper() == "USDT" else quote.upper()
+        self.ticker_yahoo = f"{base.upper()}-{quote_for_yahoo}"  # e.g., ADA-USD
         self.data_path = data_path
         
         # Initialize Binance with timeout settings (M1 Mac compatible)
@@ -26,10 +30,20 @@ class DataLoader:
         end = pd.Timestamp.utcnow().floor("h").tz_localize(None)
         idx = pd.date_range(end=end, periods=hours, freq="h")
 
-        # Deterministic random walk so behavior is stable between runs.
-        rng = np.random.default_rng(42)
+        # Deterministic but ticker-specific random walk so different coins
+        # don't collapse to identical fallback prices.
+        seed = abs(hash(self.ticker_binance)) % (2**32)
+        rng = np.random.default_rng(seed)
+        base_price_map = {
+            "BTC": 60000.0,
+            "ETH": 3000.0,
+            "ADA": 0.8,
+            "SOL": 150.0,
+        }
+        base = self.ticker_binance.split("/")[0].upper()
+        base_price = base_price_map.get(base, 100.0)
         drift = rng.normal(loc=0.0001, scale=0.006, size=hours)
-        close = 60000 * np.exp(np.cumsum(drift))
+        close = base_price * np.exp(np.cumsum(drift))
         open_ = np.concatenate(([close[0]], close[:-1]))
         spread = np.abs(rng.normal(loc=0.0025, scale=0.0012, size=hours))
         high = np.maximum(open_, close) * (1 + spread)
@@ -48,6 +62,35 @@ class DataLoader:
         )
         print(f"⚠️ Using synthetic fallback dataset ({len(df)} rows).")
         return df
+
+    def get_live_price(self, fallback=None):
+        """
+        Try to fetch an up-to-date price for entry/SL/TP calculations.
+        Falls back to provided value if both sources fail.
+        """
+        try:
+            ticker_data = self.exchange.fetch_ticker(self.ticker_binance)
+            last = ticker_data.get("last")
+            if last is not None:
+                return float(last)
+        except Exception:
+            pass
+
+        try:
+            yf_obj = yf.Ticker(self.ticker_yahoo)
+            fast = getattr(yf_obj, "fast_info", None)
+            if fast and fast.get("last_price") is not None:
+                return float(fast["last_price"])
+
+            hist = yf.download(self.ticker_yahoo, period="1d", interval="1m", progress=False)
+            if not hist.empty:
+                return float(hist["Close"].iloc[-1])
+        except Exception:
+            pass
+
+        if fallback is not None:
+            return float(fallback)
+        raise ValueError(f"Unable to fetch live price for {self.ticker_binance}.")
 
     def get_raw_data(self):
         """
@@ -107,9 +150,8 @@ class DataLoader:
         # --- ATTEMPT 3: LOCAL CSV (The Fail-Safe) ---
         candidate_paths = [
             self.data_path,
-            "data/raw/BTC-USD_hourly.csv",
-            "data/raw/BTC-USD_hourly_raw.csv",
-            "data/raw/ETH-USD_hourly_raw.csv",
+            f"data/raw/{self.ticker_yahoo}_hourly.csv",
+            f"data/raw/{self.ticker_yahoo}_hourly_raw.csv",
         ]
         for path in candidate_paths:
             if os.path.exists(path):
