@@ -1,8 +1,8 @@
 streamlit==1.52.2
 pandas==2.2.3
-numpy==1.26.4
+numpy==2.2.6
 yfinance==0.2.66
 ccxt==4.5.37
-scikit-learn==1.5.2
+scikit-learn==1.7.2
 openpyxl==3.1.5
-tensorflow==2.15.1
+tensorflow==2.20.0
